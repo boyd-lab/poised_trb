@@ -83,6 +83,7 @@ cd4_seq_corrected<-cd4_seq_corrected_only_allergic %>%
 ##identical cdr3aa in tissue samples----
 ###tissues----
 final_metadata<-fread('/data/vskatova/vskatova/poised_trb/analysis/final_metadata.tsv') #read bulk poised metadata
+write_tsv(final_metadata,'/data/vskatova/poised_trb/metadata_POISED_bulk_trb.tsv')
 
 final_metadata %<>%
   mutate(real_path=paste0('/data/vskatova/vskatova/poised_trb/poised_clonsets/mixcr/',sample))
@@ -140,19 +141,20 @@ any_tp_sc_clones_in_w0_w52_tissues<-shared_tissue_clns |>
          cell_subset=ifelse(cell_subset=='PR_Teff_Me_Tfh13','PR_Th2conv',cell_subset),
          cell_subset=ifelse(cell_subset=='PR_Treg_act2','PR_Treg_act1',cell_subset),
          cell_subset=ifelse(cell_subset=='PR_Teff_Me_act2','PR_Teff_Me_act1',cell_subset)) |> 
-  group_by(real_path,tissue,week,Participant_PPID,Group_dose_outcome,cell_subset,OIT) |> 
+  group_by(real_path,tissue,week,Participant_PPID,Group_dose_outcome,OIT,Cell_type) |> 
   summarise(sum_freq_by_tissue_week=sum(Freq_bulk)) |> 
   right_join(nClones_tissues,by=c('real_path','tissue','week','Participant_PPID')) |> 
   mutate(normalized_summed_freq=sum_freq_by_tissue_week/cloneClount) |> 
   mutate(normalized_summed_freq=ifelse(is.na(normalized_summed_freq),0,normalized_summed_freq)) |> 
   filter(week=='W000' |week=='W104') |> 
   filter(OIT=='Active') |> 
+  filter(Cell_type!='PR_CD154+Teff_Na') |> 
   ungroup() |> 
-  select(Participant_PPID,tissue,cell_subset,week,normalized_summed_freq) |> 
-  complete(Participant_PPID,tissue,cell_subset,week,fill = list(normalized_summed_freq=0)) |> 
- filter(cell_subset=='PR_Th2conv'|cell_subset=='PR_Teff_Me_Th1_CTL' |cell_subset=='PR_Teff_Me_Th2a' |
-           cell_subset=='PR_Treg_act1') |> 
-  group_by(cell_subset,tissue,Participant_PPID) |> 
+  select(Participant_PPID,tissue,Cell_type,week,normalized_summed_freq) |> 
+  complete(Participant_PPID,tissue,Cell_type,week,fill = list(normalized_summed_freq=0)) |> 
+ #filter(cell_subset=='PR_Th2conv'|cell_subset=='PR_Teff_Me_Th1_CTL' |cell_subset=='PR_Teff_Me_Th2a' |
+         #  cell_subset=='PR_Treg_act1') |> 
+  group_by(Cell_type,tissue,Participant_PPID) |> 
   mutate(n_timepoints=n_distinct(week)) |> 
   filter(n_timepoints==2) |> 
   ungroup()
@@ -174,27 +176,31 @@ ay_tp_sc_clones_in_tissues_w0_w52<-tissues_n_clones_per_subset |>
   left_join(any_tp_sc_clones_in_w0_w52_tissues,by=c('cell_subset','Participant_PPID')) |>
   left_join(nClones_tissues,by=c('tissue','week','Participant_PPID'))
  
-ay_tp_sc_clones_in_tissues_w0_w52 |> 
+any_tp_sc_clones_in_w0_w52_tissues |> 
   filter(Participant_PPID!='P118') |> 
-  filter( tissue=='stomach' | tissue=='duodenum') |> 
-  mutate(tissue=factor(x=tissue,levels=c('stomach','duodenum'))) %>%
+  mutate(tissue=factor(x=tissue,levels=c('prox_esophagus','mid_esophagus','dist_esophagus',
+                                         'stomach','duodenum'))) %>%
+  mutate(Cell_type=factor(x=Cell_type,levels=c('PR_CD137+CD154-_Treg','PR_CD154+_Teff_Me'))) %>%
+  #filter( tissue=='stomach' | tissue=='duodenum') |> 
+#  mutate(tissue=factor(x=tissue,levels=c('stomach','duodenum'))) %>%
   ggplot(aes(x=week,y=normalized_summed_freq,color=tissue))+
   geom_boxplot(outlier.shape = NA,alpha=0.7,aes(color=tissue))+
   geom_point(size=2,alpha=0.5,aes(color=tissue))+
   geom_line(aes(group=Participant_PPID))+
-  scale_color_manual(values = c('#e7298a','#19A519'))+
-  #scale_color_brewer(palette = "Dark2")+
+#  scale_color_manual(values = c('#e7298a','#19A519'))+
+  scale_color_brewer(palette = "Dark2")+
   labs(y='Normalized summed frequency (by patient ID)')+
   theme_classic()+
   theme(strip.background = element_blank())+
   xlab(element_blank())+
-  facet_wrap(~tissue+cell_subset,scales='free',nrow = 2)+
+  #stat_compare_means(paired = TRUE)+
+  facet_wrap(~Cell_type+tissue,scales = 'free_y',nrow = 2)+
   theme(legend.position="none")+ 
   theme(strip.text.x = element_text(size = 12))+
-  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))       
 
-ggsave(filename ='/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/analysis/all_PR_clones_w0_w104_stomach_duodenum_normalized.png',
-       width = 10,height = 6,device = 'png',dpi = 400)
+ggsave(filename ='/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/analysis/all_PR_clones_w0_w104_cellTypes_normalized.png',
+       width = 14,height = 6,device = 'png',dpi = 400)
 
 #пересекаются ли они между пациентами?
 shared_tissue_clns |> 
