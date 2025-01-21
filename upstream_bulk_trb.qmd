@@ -1,0 +1,56 @@
+---
+title: "POISED_trb_bulk_analysis"
+author: "Valeriia Skatova"
+format: html
+editor: visual
+---
+
+```{r}
+library(data.table)
+library(dplyr)
+library(readr)
+```
+
+## Barcodes metadata
+
+```{r}
+#batch1_bulk_trb_poised<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq#/sample_table_1.tsv')
+#metadata_batch1_bulk_trb_poised<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/analysis/metadata_run1_deepSeq.tsv')
+sample_table_mixcr_pool1<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/sample_table.tsv')
+sample_table_mixcr_pool2<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/sample_table_run2.tsv')
+sample_table_mixcr_pool3<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/mixcr_run3/sample_table_run3.tsv')
+```
+
+## Upstream MiXCR
+
+### Alignment
+
+```{bash}
+mixcr align --report /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/mixcr/result.align.report.txt
+--preset generic-tcr-amplicon \
+--rigid-left-alignment-boundary \
+--floating-right-alignment-boundary C \
+--split-by-sample \
+--rna \
+--species hsa \
+--sample-table /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/sample_table.tsv \
+--tag-pattern ^NNNN(SAMPLE1:N{8})(R1:*)(SAMPLE2:N{8})NNNNAGATCGG\^(R2:*) \  #Pool2_S1_L{{n}}_R1_001.fastq.gz Pool2_S1_L{{n}}_R2_001.fastq.gz #for batch 1
+#M355plusNova_S1_L{{n}}_R1_001.fastq.gz M355plusNova_S1_L{{n}}_R2_001.fastq.gz  #for batch 2
+#PSD-TCRb_S1_L{{n}}_R1_001.fastq.gz PSD-TCRb_S1_L{{n}}_R2_001.fastq.gz #for batch 3
+/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/mixcr/result.vdjca
+```
+
+### Assemble
+
+```{bash}
+ls *.vdjca| parallel --line-buffer -j 10 'mixcr assemble \
+--report /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/mixcr/{=s:.vdjca:.assemble.report.txt:= } \
+--json-report /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/mixcr/{=s:.vdjca:.assemble.report.json:= } \ 
+{} /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/mixcr/{=s:.vdjca:clns:=}
+```
+
+### Export Clonsets 
+
+```{bash}
+ls *clns | parallel --line-buffer -j 10 'mixcr exportClones -cloneId -count -fraction -nFeature CDR3 -aaFeature CDR3 -vGene -jGene -dGene --filter-out-of-frames --filter-stops -f {} /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/mixcr/{=s:.clns:.tsv:=}' 
+```
