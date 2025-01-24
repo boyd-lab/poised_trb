@@ -16,9 +16,23 @@ library(readr)
 ```{r}
 #batch1_bulk_trb_poised<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq#/sample_table_1.tsv')
 #metadata_batch1_bulk_trb_poised<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/analysis/metadata_run1_deepSeq.tsv')
-sample_table_mixcr_pool1<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/sample_table.tsv')
-sample_table_mixcr_pool2<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/sample_table_run2.tsv')
-sample_table_mixcr_pool3<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/mixcr_run3/sample_table_run3.tsv')
+sample_table_mixcr_pool1<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/sample_table.tsv') |> 
+  select(SAMPLE1,SAMPLE2,Sample) |> 
+  mutate(Sample=paste0(Sample,'.mic'))
+  
+write_tsv(sample_table_mixcr_pool1,'/data/raw/poised_trb_reseq/mitool/poised_trb_batch1.tsv')
+
+sample_table_mixcr_pool2<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/sample_table_run2.tsv') |> 
+   select(SAMPLE1,SAMPLE2,Sample) |> 
+    mutate(Sample=paste0(Sample,'.mic'))
+
+write_tsv(sample_table_mixcr_pool2,'/data/raw/poised_trb_reseq/mitool/poised_trb_batch2.tsv')
+
+
+sample_table_mixcr_pool3<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/mixcr_run3/sample_table_run3.tsv') |> 
+  select(SAMPLE1,SAMPLE2,Sample)
+write_tsv(sample_table_mixcr_pool3,'/data/raw/poised_trb_reseq/mitool/poised_trb_batch3.tsv')
+
 ```
 
 ## Upstream MiXCR
@@ -34,7 +48,9 @@ mixcr align --report /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/mixcr
 --rna \
 --species hsa \
 --sample-table /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/sample_table.tsv \
---tag-pattern ^NNNN(SAMPLE1:N{8})(R1:*)(SAMPLE2:N{8})NNNNAGATCGG\^(R2:*) \  #Pool2_S1_L{{n}}_R1_001.fastq.gz Pool2_S1_L{{n}}_R2_001.fastq.gz #for batch 1
+--tag-pattern ^NNNN(SAMPLE1:N{8})(R1:*)(SAMPLE2:N{8})NNNNAGATCGG\^(R2:*)  #(for batch 1/2 )
+--tag-pattern ^N{4}(SAMPLE1:N{8})(R1:*)\^N{4}(SAMPLE2:N{8})(R2:*) #for batch 3
+#Pool2_S1_L{{n}}_R1_001.fastq.gz Pool2_S1_L{{n}}_R2_001.fastq.gz #for batch 1
 #M355plusNova_S1_L{{n}}_R1_001.fastq.gz M355plusNova_S1_L{{n}}_R2_001.fastq.gz  #for batch 2
 #PSD-TCRb_S1_L{{n}}_R1_001.fastq.gz PSD-TCRb_S1_L{{n}}_R2_001.fastq.gz #for batch 3
 /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/mixcr/result.vdjca
@@ -49,8 +65,60 @@ ls *.vdjca| parallel --line-buffer -j 10 'mixcr assemble \
 {} /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/mixcr/{=s:.vdjca:clns:=}
 ```
 
-### Export Clonsets 
+### Export Clonsets
 
 ```{bash}
 ls *clns | parallel --line-buffer -j 10 'mixcr exportClones -cloneId -count -fraction -nFeature CDR3 -aaFeature CDR3 -vGene -jGene -dGene --filter-out-of-frames --filter-stops -f {} /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/mixcr/{=s:.clns:.tsv:=}' 
+```
+
+## Mitool reparsing
+
+## batch 1/2 (the same tag pattern)
+
+```{bash}
+#match SAMPLE1 and SAMPLE2
+mitool parse --pattern "^NNNN(SAMPLE1:N{8})(R1:*)(SAMPLE2:N{8})NNNNAGATCGG\^(R2:*)" \
+/data/raw/poised_trb_reseq/Pool2_S1_L{{n}}_{{R}}_001.fastq.gz #for batch1
+/data/raw/poised_trb_reseq/M355plusNova_S1_L{{n}}_{{R}}_001.fastq.gz #for batch2
+poised-trb-reseq-batch1.mic #output for batch1
+poised-trb-reseq-batch2.mic #output for batch2
+
+#create lists of barcodes as separate files
+#for batch1
+cut -f3 /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/sample_table.tsv | tail -n +2| sort| uniq > SAMPLE1_whitelist_b1.txt
+cut -f4 /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/sample_table.tsv |tail -n +2|sort| uniq > SAMPLE2_whitelist_b1.txt
+
+#for batch2
+cut -f3 /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/sample_table_run2.tsv | tail -n +2| sort| uniq > SAMPLE1_white_list_b2.txt
+cut -f4 /data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/sample_table_run2.tsv | tail -n +2| sort| uniq > SAMPLE2_white_list_b2.txt
+
+#refine tags 
+
+#for batch 1
+mitool -Xmx80g refine-tags -t SAMPLE1#file:SAMPLE1_whitelist_b1.txt -t SAMPLE2#file:SAMPLE2_whitelist_b1.txt -r poised-trb-reseq-batch1.refine.log poised-trb-reseq-batch1.mic poised-trb-reseq-batch1.refined.mic
+#for batch 2
+mitool -Xmx80g refine-tags -t SAMPLE1#file:SAMPLE1_white_list_b2.txt -t SAMPLE2#file:SAMPLE2_white_list_b2.txt -r poised-trb-reseq-batch2.refine.log poised-trb-reseq-batch2.mic poised-trb-reseq-batch2.refined.mic 
+
+#reparse data (create mic files for each future fastq)
+#for batch1
+mitool -Xmx80g filter-by-tag-table poised-trb-reseq-batch1.refined.mic poised_trb_batch1.tsv
+#for batch2
+mitool -Xmx80g filter-by-tag-table poised-trb-reseq-batch2.refined.mic poised_trb_batch2.tsv
+
+#create a pair of fastq files 
+ls BFI-*.mic|parallel -j 20 --line-buffer 'mitool -Xmx5g export-fastq {} -O R1={.}_R1.fastq.gz -O R2={.}_R2.fastq.gz'
+
+
+```
+
+## Batch 3
+
+(only tag pattern is different, so I will write down only the first step)
+
+```{bash}
+mitool parse --pattern "^N{4}(SAMPLE1:N{8})(R1:*)\^N{4}(SAMPLE2:N{8})(R2:*)" /data/raw/poised_trb_reseq/PSD-TCRb_S1_L{{n}}_{{R}}_001.fastq.gz mitool/poised-trb-reseq-batch3.mic
+
+```
+
+```         
 ```
