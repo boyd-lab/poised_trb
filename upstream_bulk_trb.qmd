@@ -73,11 +73,12 @@ ls *clns | parallel --line-buffer -j 10 'mixcr exportClones -cloneId -count -fra
 
 ## Mitool reparsing
 
-## batch 1/2 (the same tag pattern)
+#### batch 1/2 (the same tag pattern)
 
 ```{bash}
 #match SAMPLE1 and SAMPLE2
-mitool parse --pattern "^NNNN(SAMPLE1:N{8})(R1:*)(SAMPLE2:N{8})NNNNAGATCGG\^(R2:*)" \
+mitool parse --pattern "^NNNN(SAMPLE1:N{8})(R1:*)(SAMPLE2:N{8})NNNNAGATCGG\^(R2:*)"  #for batch1
+mitool parse --pattern "^N{4}(SAMPLE1:N{8})(R1:*)(SAMPLE2:N{8})N{4}agatcggaagag \ ^N{12}(R2:*)N{12}agatcggaagagcgtcgtg" #for batch 2
 /data/raw/poised_trb_reseq/Pool2_S1_L{{n}}_{{R}}_001.fastq.gz #for batch1
 /data/raw/poised_trb_reseq/M355plusNova_S1_L{{n}}_{{R}}_001.fastq.gz #for batch2
 poised-trb-reseq-batch1.mic #output for batch1
@@ -106,18 +107,73 @@ mitool -Xmx80g filter-by-tag-table poised-trb-reseq-batch1.refined.mic poised_tr
 mitool -Xmx80g filter-by-tag-table poised-trb-reseq-batch2.refined.mic poised_trb_batch2.tsv
 
 #create a pair of fastq files 
-ls BFI-*.mic|parallel -j 20 --line-buffer 'mitool -Xmx5g export-fastq {} -O R1={.}_R1.fastq.gz -O R2={.}_R2.fastq.gz'
+ls *.mic|parallel -j 20 --line-buffer 'mitool -Xmx20g export-fastq {} -O R1={.}_R1.fastq.gz -O R2={.}_R2.fastq.gz'
 
 
 ```
 
-## Batch 3
+#### Batch 3
 
 (only tag pattern is different, so I will write down only the first step)
 
 ```{bash}
 mitool parse --pattern "^N{4}(SAMPLE1:N{8})(R1:*)\^N{4}(SAMPLE2:N{8})(R2:*)" /data/raw/poised_trb_reseq/PSD-TCRb_S1_L{{n}}_{{R}}_001.fastq.gz mitool/poised-trb-reseq-batch3.mic
 
+```
+
+## Filter for files, that have single-cell data
+
+```{r}
+metadata_final_poised<-fread('/data/vskatova/vskatova/poised_trb/analysis/final_metadata.tsv')
+cd4_seq_corrected_only_trb<-read_tsv('/data/vskatova/poised_trb/single_cell_cd4_poised.tsv')|> inner_join(metadata_final_poised,by='Participant_PPID')
+
+#to find patient_ids of patients with single cell data
+patients_with_sc_data<-cd4_seq_corrected_only_trb |> 
+  select(Participant_PPID,participant_label) |> unique()
+```
+
+```{r}
+poised_trb_batch1_metadata<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/analysis/metadata_run1_deepSeq.tsv') |> 
+  mutate(filename=str_remove(sample_name,'.clns.tsv')) |> 
+  select(filename,Participant_PPID,participant_label,week,tissue,Group3,age)
+
+poised_trb_batch2_metadata<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/metadata_run2_deepSeq.tsv') |> 
+  mutate(filename=str_remove(sample_name,'.trb.tsv'),
+         filename=str_remove(filename,'result.')) |> 
+  select(filename,Participant_PPID,tissue,week,age,Group3)
+
+poised_trb_batch3_metadata<-read_tsv('/data/vskatova/vskatova/poised_trb/poised_trb_deepSeq/analysis/metadata_run3.tsv') |> 
+  dplyr::rename(filename=Sample) |> 
+  select(filename,Participant_PPID,week,Group3)
+
+fastq_poised_trb<-dir('/data/raw/poised_trb_reseq/mitool/mic_fastq_files/fastq_files/') |> 
+  as.data.frame() |> 
+  dplyr::rename(filename_fastq='dir("/data/raw/poised_trb_reseq/mitool/mic_fastq_files/fastq_files/")') |> 
+  mutate(filename=str_remove(filename_fastq,'_R\\d+.fastq.gz')) |> 
+ left_join(poised_trb_batch1_metadata |> 
+              bind_rows(poised_trb_batch1_metadata,poised_trb_batch2_metadata,
+                        poised_trb_batch3_metadata),by="filename") |> 
+  mutate(tissue='PBMC') |> unique() |> 
+  filter(!(is.na(Participant_PPID)&(is.na(participant_label)))) |> 
+  filter(Participant_PPID %in% patients_with_sc_data$Participant_PPID) |> 
+  filter(week=="W000" | week=="W052"| week=="BL02" | week=="BL01"|
+           week=="BL04" | week=="W104"| week=="W117" | week=="W104A" |
+            week=="W117A" | week=="W117B")
+write_tsv(fastq_poised_trb,'/data/vskatova/poised_trb/metadata_fastq_poised_obly_sc.tsv')
+
+ncbi_metadata<-fastq_poised_trb |> 
+  dplyr::rename(sample_title=filename,
+                isolate=Participant_PPID,
+                treatment=Group3) |> 
+  mutate(organism='Homo_sapiens',
+         biomaterial_provider="POISED_study_Stanford_University,USA",
+         geo_loc_name='USA: California', 
+         tissue='PBMC') |> 
+  select(-age) |> 
+  inner_join(metadata_final_poised |> select(age,Sex,Age.at.enrollment.years,Participant_PPID) |> dplyr::rename(age='Age.at.enrollment.years',sex=Sex,dev_stage=age,isolate=Participant_PPID) |> unique(),by='isolate') |> 
+  select(-participant_label)
+
+write_tsv(ncbi_metadata,'/data/vskatova/poised_trb/ncbi_metadata.tsv')
 ```
 
 ```         
