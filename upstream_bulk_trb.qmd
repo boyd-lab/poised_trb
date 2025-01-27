@@ -171,10 +171,43 @@ ncbi_metadata<-fastq_poised_trb |>
          tissue='PBMC') |> 
   select(-age) |> 
   inner_join(metadata_final_poised |> select(age,Sex,Age.at.enrollment.years,Participant_PPID) |> dplyr::rename(age='Age.at.enrollment.years',sex=Sex,dev_stage=age,isolate=Participant_PPID) |> unique(),by='isolate') |> 
-  select(-participant_label)
+  select(-participant_label) |> 
+   write_tsv('/data/vskatova/poised_trb/ncbi_metadata.tsv')
+```
 
-write_tsv(ncbi_metadata,'/data/vskatova/poised_trb/ncbi_metadata.tsv')
+```{r}
+sra_metadata<-ncbi_metadata |> 
+ group_by(sample_title,isolate,week,tissue,treatment,organism,biomaterial_provider,
+         geo_loc_name,dev_stage, sex,age) |> 
+  summarise(fastq_pair=paste(filename_fastq,collapse = ',')) |> 
+  separate(col = 'fastq_pair',into=c('Filename','filename2')) |> 
+  mutate('Design description'='TCRb from cDNA was amplified using custon in-house TRBV forward primers and 1 reverse specific TCRB primer',
+         'Instrument model'='Illumina NovaSeq 6000',
+         Platform='ILLUMINA',
+         'Library layout'='paired',
+         'Library selection'='PCR',
+         Filetype='fastq',
+         Title='bulk TCR beta seq of peanut allergic individuals',
+         'Library strategy'='AMPLICON',
+         'Library source'='TRANSCRIPTOMIC') |> 
+  mutate('Library ID'=sample_title) |> 
+  dplyr::rename('Sample name'=sample_title)
+  
+```
+
+### Uploading data to SRA using Aspera connect
+
+```{bash}
+#download aspera connect for linux 
+wget https://d3gcli72yxqn2z.cloudfront.net/downloads/connect/latest/bin/ibm-aspera-connect_4.2.13.820_linux_x86_64.tar.gz
+#unzip the file
+tar -zxvf ibm-aspera-connect_4.2.13.820_linux_x86_64.tar.gz
+#actuvate the script
+./ibm-aspera-connect_4.2.13.820_linux_x86_64.sh
+#you might add it to path, ut i didn't do it  and run directly from the directory 
+
 ```
 
 ```         
+
 ```
