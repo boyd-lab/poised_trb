@@ -206,8 +206,12 @@ tar -zxvf ibm-aspera-connect_4.2.13.820_linux_x86_64.tar.gz
 ./ibm-aspera-connect_4.2.13.820_linux_x86_64.sh
 #you might add it to path, ut i didn't do it  and run directly from the directory 
 
+#run the data transfer
+/data/vskatova/.aspera/connect/bin/asperaconnect -i /path/to/the/public/ssh_key -QT -l100m -k1 -d /path/to/the/folder/for/the/submission/ subasp@upload.ncbi.nlm.nih.gov:uploads/vskatova_stanford.edu_TAp6mA8A
+
+
+/home/vskatova/.aspera/connect/bin/ascp -i /nfs/raw_data_shadowfax/POISED_Tcells_BDRhapsody/aspera.openssh -QT -l100m -k1 -d /nfs/raw_data_shadowfax/POISED_Tcells_BDRhapsody/geo_data subasp@upload.ncbi.nlm.nih.gov:uploads/xiaorui.han93_gmail.com_RNXgbHVi
 ```
 
 ```         
-
 ```
